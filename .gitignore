@@ -49,3 +49,5 @@ po/*~
 rsconnect/
 
 # Datasets
+places_county_2025.csv
+.Renviron

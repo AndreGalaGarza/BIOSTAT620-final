@@ -11,6 +11,150 @@ embed-resources: true
 
 **Source:** OpenAI. (2026). *ChatGPT* \[Large language model\]. <https://chatgpt.com/>.
 
+# Data Processing (TODO: move to Quarto website)
+
+## Load and inspect PLACES mental health data
+```{r}
+places <- read.csv("places_county_2025.csv")
+```
+
+```{r}
+dim(places)
+```
+
+```{r}
+head(places)
+```
+
+```{r}
+colnames(places)
+```
+```{r}
+str(places)
+```
+```{r}
+library(dplyr)
+
+places_mh <- places %>%
+  select(
+    StateAbbr,
+    StateDesc,
+    CountyName,
+    CountyFIPS,
+    TotalPopulation,
+    TotalPop18plus,
+    MHLTH_AdjPrev,
+    MHLTH_Adj95CI
+  ) %>%
+  rename(
+    poor_mental_health = MHLTH_AdjPrev,
+    poor_mental_health_ci = MHLTH_Adj95CI
+  )
+```
+
+```{r}
+dim(places_mh)
+```
+
+```{r}
+head(places_mh)
+```
+
+```{r}
+str(places_mh)
+```
+
+## Load and inspect ACS predictors
+```{r}
+library(tidycensus)
+
+api_key <- Sys.getenv("CENSUS_API_KEY")
+census_api_key(api_key, install = FALSE)
+```
+
+```{r}
+library(tidycensus)
+library(dplyr)
+library(tidyr)
+
+api_key <- Sys.getenv("CENSUS_API_KEY")
+census_api_key(api_key, install = FALSE)
+
+acs_raw <- get_acs(
+  geography = "county",
+  year = 2023,
+  survey = "acs5",
+  variables = c(
+    poverty_rate = "S1701_C03_001",
+    median_household_income = "B19013_001",
+    unemployment_rate = "DP03_0009PE",
+    bachelors_or_higher = "DP02_0068PE",
+    uninsured_rate = "S2701_C05_001",
+    rent_burden_30_34_9 = "DP04_0141PE",
+    rent_burden_35_plus = "DP04_0142PE"
+  )
+)
+```
+
+```{r}
+unique(acs_raw$variable)
+```
+
+```{r}
+acs_county <- acs_raw %>%
+  select(GEOID, NAME, variable, estimate) %>%
+  pivot_wider(names_from = variable, values_from = estimate) %>%
+  rename(
+    bachelors_or_higher = DP02_0068P,
+    unemployment_rate = DP03_0009P,
+    rent_burden_30_34_9 = DP04_0141P,
+    rent_burden_35_plus = DP04_0142P
+  ) %>%
+  mutate(
+    housing_cost_burden = rent_burden_30_34_9 + rent_burden_35_plus
+  ) %>%
+  select(
+    GEOID,
+    NAME,
+    poverty_rate,
+    median_household_income,
+    unemployment_rate,
+    bachelors_or_higher,
+    uninsured_rate,
+    rent_burden_30_34_9,
+    rent_burden_35_plus,
+    housing_cost_burden
+  )
+```
+
+```{r}
+places_mh <- places_mh %>%
+  mutate(CountyFIPS = as.character(CountyFIPS))
+
+acs_county <- acs_county %>%
+  mutate(GEOID = as.character(GEOID))
+```
+
+```{r}
+analysis_df <- places_mh %>%
+  left_join(acs_county, by = c("CountyFIPS" = "GEOID"))
+```
+
+## Load and inspect Census GEOIDs and TIGER/Line shapefiles
+```{r}
+library(tigris)
+library(dplyr)
+
+counties_sf <- counties(year = 2024, cb = TRUE) %>%
+  mutate(GEOID = as.character(GEOID))
+
+analysis_df <- analysis_df %>%
+  mutate(CountyFIPS = as.character(CountyFIPS))
+
+map_df <- counties_sf %>%
+  left_join(analysis_df, by = c("GEOID" = "CountyFIPS"))
+```
+
 # Introduction
 
 # Methods
