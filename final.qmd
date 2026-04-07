@@ -1,0 +1,20 @@
+---
+title: "BIOSTAT 620 Final Project (tentative title)"
+author: "Andre Gala-Garza"
+date: "4/6/2026"
+format: html
+editor: visual
+embed-resources: true
+---
+
+**Disclaimer:** Generative AI was used to assist with drafting report information and templating and writing code in this assignment; however, this writing was checked manually and edited by hand to ensure accuracy.
+
+**Source:** OpenAI. (2026). *ChatGPT* \[Large language model\]. <https://chatgpt.com/>.
+
+# Introduction
+
+# Methods
+
+# Results
+
+# Conclusion and Summary
