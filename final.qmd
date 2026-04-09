@@ -1,6 +1,5 @@
 ---
-title: "BIOSTAT 620 Final Project (tentative title)"
-author: "Andre Gala-Garza"
+title: "What Drives Poor Mental Health Across U.S. Communities? A County-Level Analysis of Social and Economic Determinants in the United States"
 date: "4/6/2026"
 format: html
 editor: visual
@@ -154,11 +153,313 @@ analysis_df <- analysis_df %>%
 map_df <- counties_sf %>%
   left_join(analysis_df, by = c("GEOID" = "CountyFIPS"))
 ```
+## EDA plots
+
+```{r}
+# Outcome distribution
+library(ggplot2)
+library(dplyr)
+
+ggplot(analysis_df, aes(x = poor_mental_health)) +
+  geom_histogram(bins = 30) +
+  labs(
+    title = "Distribution of Poor Mental Health Across U.S. Counties",
+    x = "Age-adjusted prevalence of frequent mental distress",
+    y = "Number of counties"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+## Predictor distributions
+library(tidyr)
+library(ggplot2)
+library(dplyr)
+
+analysis_df %>%
+  select(
+    poverty_rate,
+    median_household_income,
+    unemployment_rate,
+    bachelors_or_higher,
+    uninsured_rate,
+    housing_cost_burden
+  ) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "variable",
+    values_to = "value"
+  ) %>%
+  ggplot(aes(x = value)) +
+  geom_histogram(bins = 30) +
+  facet_wrap(~ variable, scales = "free") +
+  labs(
+    title = "Distributions of ACS Predictor Variables",
+    x = "Value",
+    y = "Number of counties"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+## Scatterplots of poor mental health vs each predictor
+analysis_df %>%
+  select(
+    poor_mental_health,
+    poverty_rate,
+    median_household_income,
+    unemployment_rate,
+    bachelors_or_higher,
+    uninsured_rate,
+    housing_cost_burden
+  ) %>%
+  pivot_longer(
+    cols = -poor_mental_health,
+    names_to = "predictor",
+    values_to = "value"
+  ) %>%
+  ggplot(aes(x = value, y = poor_mental_health)) +
+  geom_point(alpha = 0.4, size = 1) +
+  geom_smooth(method = "lm", se = FALSE) +
+  facet_wrap(~ predictor, scales = "free_x") +
+  labs(
+    title = "Poor Mental Health vs. Social and Economic Predictors",
+    x = "Predictor value",
+    y = "Poor mental health prevalence"
+  ) +
+  theme_minimal()
+```
+
+
+```{r}
+# A focused set of scatterplots for the strongest-looking predictors
+ggplot(analysis_df, aes(x = poverty_rate, y = poor_mental_health)) +
+  geom_point(alpha = 0.4) +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(
+    title = "Poor Mental Health vs. Poverty Rate",
+    x = "Poverty rate",
+    y = "Poor mental health prevalence"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+ggplot(analysis_df, aes(x = median_household_income, y = poor_mental_health)) +
+  geom_point(alpha = 0.4) +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(
+    title = "Poor Mental Health vs. Median Household Income",
+    x = "Median household income",
+    y = "Poor mental health prevalence"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+ggplot(analysis_df, aes(x = bachelors_or_higher, y = poor_mental_health)) +
+  geom_point(alpha = 0.4) +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(
+    title = "Poor Mental Health vs. Bachelor's Degree Attainment",
+    x = "Percent with bachelor's degree or higher",
+    y = "Poor mental health prevalence"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+# Correlation heatmap
+library(corrplot)
+
+cor_df <- analysis_df %>%
+  select(
+    poor_mental_health,
+    poverty_rate,
+    median_household_income,
+    unemployment_rate,
+    bachelors_or_higher,
+    uninsured_rate,
+    housing_cost_burden
+  ) %>%
+  na.omit()
+
+cor_matrix <- cor(cor_df)
+
+corrplot(cor_matrix, method = "color", type = "upper", tl.cex = 0.8)
+```
+
+```{r}
+# County-level choropleth of poor mental health
+
+library(sf)
+library(ggplot2)
+library(dplyr)
+
+ggplot(map_df) +
+  geom_sf(aes(fill = poor_mental_health), color = NA) +
+  labs(
+    title = "Poor Mental Health Across U.S. Counties",
+    fill = "Poor mental\nhealth"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+# Quick regional-style comparison using state averages
+analysis_df %>%
+  group_by(StateAbbr) %>%
+  summarize(mean_poor_mental_health = mean(poor_mental_health, na.rm = TRUE)) %>%
+  ggplot(aes(x = reorder(StateAbbr, mean_poor_mental_health), y = mean_poor_mental_health)) +
+  geom_col() +
+  coord_flip() +
+  labs(
+    title = "Average Poor Mental Health by State",
+    x = "State",
+    y = "Average poor mental health prevalence"
+  ) +
+  theme_minimal()
+```
 
 # Introduction
 
+Mental health is a core part of overall well-being, and researchers increasingly recognize that it is shaped not only by individual behavior or clinical diagnosis but also by the broader conditions in which people live. The CDC notes that mental health is influenced by factors at the individual, family, community, and societal levels, which aligns with the social determinants of health framework (Centers for Disease Control and Prevention, "About Mental Health"; Office of Disease Prevention and Health Promotion). Because these structural conditions affect stress, stability, access to care, and quality of life, they may help explain why some communities experience a higher burden of poor mental health than others.
+
+This project asks the following question: **Which social and economic factors are most strongly associated with poor mental health across U.S. counties?** A county-level approach helps reveal broader geographic patterns that may not be visible in individual-level analyses. Counties provide meaningful variation in economic conditions, educational attainment, insurance coverage, and housing strain, while also allowing for nationwide comparison.
+
+The outcome variable comes from the CDC’s PLACES dataset, which provides model-based local health estimates across the United States. I use the county-level measure Frequent Mental Distress among adults, defined as the percentage of adults reporting that their mental health was "not good" for 14 or more of the past 30 days (Centers for Disease Control and Prevention, "Health Status | PLACES"). Because this project compares counties, I use the age-adjusted prevalence of this measure.
+
+To examine possible social and economic correlates of poor mental health, I merge PLACES data with county-level indicators from the American Community Survey (ACS) 5-year estimates. The ACS 5-year data provide official U.S. Census Bureau estimates for counties nationwide, including measures of poverty, household income, unemployment, educational attainment, insurance coverage, and housing conditions (United States Census Bureau). Together, these measures represent key dimensions of the social determinants of health and create a county-level dataset for assessing how structural conditions are associated with poor mental health across the United States.
+
+This project is important both substantively and methodologically. Substantively, it helps clarify how place may shape mental health outcomes. Methodologically, it shows how publicly available health and Census data can be combined to study an important public health issue through data science tools such as geographic joins, regression modeling, and interactive visualization. The goal is not to make causal claims, but to provide a clear picture of which county-level social and economic conditions are most closely associated with poor mental health.
+
 # Methods
+To answer this research question, I combined county-level data from two public sources. The outcome variable comes from the CDC’s 2025 PLACES county dataset, from which I use the age-adjusted prevalence of frequent mental distress among adults (MHLTH_AdjPrev) as my measure of poor mental health. To examine possible social and economic drivers of this outcome, I merged the PLACES data with county-level estimates from the American Community Survey (ACS) 5-year data obtained through the Census API.
+
+The ACS predictors in this analysis are poverty rate, median household income, unemployment rate, percentage of adults with a bachelor’s degree or higher, uninsured rate, and housing cost burden. These variables capture several major dimensions of community conditions, including economic hardship, labor market stability, educational attainment, access to health insurance, and housing-related financial strain. By joining the PLACES and ACS datasets using county FIPS/GEOID identifiers, I created a county-level dataset to examine how structural social and economic factors are associated with poor mental health across U.S. communities.
+
+# Code + Results
+## County-Level Mental Health Overview
+
+I first present a publication-ready table showing counties with the highest levels of poor mental health. This helps identify which counties appear at the top of the distribution before turning to a national map.
+
+```{r}
+#| label: tbl-mental-health-county
+#| echo: false
+#| message: false
+#| warning: false
+
+library(dplyr)
+library(knitr)
+library(kableExtra)
+library(scales)
+
+mental_health_table <- analysis_df %>%
+  select(StateDesc, CountyName, poor_mental_health, TotalPopulation) %>%
+  mutate(
+    TotalPopulation = as.numeric(gsub(",", "", TotalPopulation))
+  ) %>%
+  arrange(desc(poor_mental_health)) %>%
+  slice_head(n = 15) %>%
+  mutate(
+    poor_mental_health = round(poor_mental_health, 1),
+    TotalPopulation = comma(TotalPopulation)
+  ) %>%
+  rename(
+    State = StateDesc,
+    County = CountyName,
+    `Poor Mental Health (%)` = poor_mental_health,
+    Population = TotalPopulation
+  )
+
+mental_health_table %>%
+  kable(
+    caption = "Top 15 U.S. Counties by Age-Adjusted Prevalence of Frequent Mental Distress",
+    align = c("l", "l", "r", "r"),
+    booktabs = TRUE
+  ) %>%
+  kable_styling(
+    full_width = FALSE,
+    bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+    position = "center"
+  ) %>%
+  row_spec(0, bold = TRUE)
+```
+
+The table shows that the counties with the highest prevalence of poor mental health are heavily concentrated in West Virginia, with a few additional counties from Tennessee and South Dakota. The percentages are fairly tightly clustered, ranging from about 24.4% to 26.6%, which suggests that the highest-burden counties are all experiencing similarly elevated levels of frequent mental distress.
+
+Next, I map county-level poor mental health across the United States using an interactive choropleth map. This visualization makes it easier to see broad geographic patterns and identify regions where poor mental health appears especially high or low.
+
+```{r}
+#| label: fig-mental-health-map
+#| echo: false
+#| message: false
+#| warning: false
+
+library(leaflet)
+library(sf)
+library(dplyr)
+library(htmltools)
+library(scales)
+
+map_data <- map_df %>%
+  st_transform(4326) %>%
+  mutate(
+    popup_text = paste0(
+      "<strong>", CountyName, ", ", StateAbbr, "</strong><br>",
+      "Poor mental health: ", round(poor_mental_health, 1), "%<br>",
+      "Poverty rate: ", round(poverty_rate, 1), "%<br>",
+      "Median household income: ", dollar(median_household_income), "<br>",
+      "Unemployment rate: ", round(unemployment_rate, 1), "%<br>",
+      "Bachelor's degree or higher: ", round(bachelors_or_higher, 1), "%<br>",
+      "Uninsured rate: ", round(uninsured_rate, 1), "%<br>",
+      "Housing cost burden: ", round(housing_cost_burden, 1), "%"
+    )
+  )
+
+pal <- colorNumeric(
+  palette = "YlOrRd",
+  domain = map_data$poor_mental_health,
+  na.color = "#d9d9d9"
+)
+
+leaflet(map_data) %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  addPolygons(
+    fillColor = ~pal(poor_mental_health),
+    color = "white",
+    weight = 0.3,
+    fillOpacity = 0.8,
+    smoothFactor = 0.2,
+    popup = ~popup_text,
+    highlightOptions = highlightOptions(
+      weight = 1.2,
+      color = "#333333",
+      fillOpacity = 0.9,
+      bringToFront = TRUE
+    )
+  ) %>%
+  addLegend(
+    pal = pal,
+    values = ~poor_mental_health,
+    opacity = 0.8,
+    title = "Poor mental health (%)",
+    position = "bottomright"
+  )
+```
+
+The map suggests broad spatial clustering, with relatively high levels of poor mental health concentrated in parts of Appalachia, the Southeast, and portions of the rural South, while lower levels appear more common in parts of the Great Plains, Upper Midwest, and some Northeastern counties. Overall, the choropleth indicates that poor mental health is not randomly distributed, but instead shows clear regional patterns across U.S. counties.
 
 # Results
 
 # Conclusion and Summary
+
+# Works Cited
+
+Centers for Disease Control and Prevention. “About Mental Health.” *CDC*, 9 June 2025, www.cdc.gov/mental-health/about/index.html.
+
+Centers for Disease Control and Prevention. “Health Status | PLACES.” *CDC*, 29 Oct. 2024, www.cdc.gov/places/measure-definitions/health-status.html.
+
+Office of Disease Prevention and Health Promotion. “Social Determinants of Health.” *Healthy People 2030*, U.S. Department of Health and Human Services, odphp.health.gov/healthypeople/priority-areas/social-determinants-health.
+
+United States Census Bureau. “American Community Survey 5-Year Data (2009–2024).” *U.S. Census Bureau*, www.census.gov/data/developers/data-sets/acs-5year.html.
