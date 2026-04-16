@@ -28,7 +28,7 @@ jobs:
       - name: Set up Quarto
         uses: quarto-dev/quarto-actions/setup@v2
 
-      - name: Install system libraries for sf
+      - name: Install system libraries
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -36,7 +36,13 @@ jobs:
             libgeos-dev \
             libproj-dev \
             libudunits2-dev \
-            libfontconfig1-dev
+            libfontconfig1-dev \
+            libharfbuzz-dev \
+            libfribidi-dev \
+            libfreetype6-dev \
+            libpng-dev \
+            libtiff5-dev \
+            libjpeg-dev
 
       - name: Install R packages
         run: |
@@ -57,7 +63,7 @@ jobs:
             "tidycensus",
             "tidyr",
             "tigris"
-          ))'
+          ), dependencies = TRUE)'
 
       - name: Render site
         env:
