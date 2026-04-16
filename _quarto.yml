@@ -1,0 +1,17 @@
+project:
+  type: website
+  output-dir: docs
+
+website:
+  title: "What Drives Poor Mental Health Across U.S. Communities?"
+  navbar:
+    left:
+      - href: index.qmd
+        text: Report
+      - href: data-processing.qmd
+        text: Data Processing
+
+format:
+  html:
+    theme: cosmo
+    toc: true

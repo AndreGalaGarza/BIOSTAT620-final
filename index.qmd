@@ -1,6 +1,7 @@
 ---
 title: "What Drives Poor Mental Health Across U.S. Communities? A County-Level Analysis of Social and Economic Determinants in the United States"
 date: "4/15/2026"
+author: "Andre Gala-Garza"
 format: html
 editor: visual
 embed-resources: true
@@ -10,34 +11,42 @@ embed-resources: true
 
 **Source:** OpenAI. (2026). *ChatGPT* \[Large language model\]. <https://chatgpt.com/>.
 
-# Data Processing (TODO: move to Quarto website)
+# Introduction
 
-## Load and inspect PLACES mental health data
+Mental health is a core part of overall well-being, and it is shaped not only by individual circumstances but also by the broader conditions in which people live. The CDC notes that mental health is influenced by factors at the individual, family, community, and societal levels, which aligns with the social determinants of health framework (Centers for Disease Control and Prevention, "About Mental Health"; Office of Disease Prevention and Health Promotion). Because these conditions affect stress, stability, access to care, and quality of life, they may help explain why some communities experience a higher burden of poor mental health than others.
 
-I begin by loading and inspecting the PLACES data so I can confirm its structure, identify the county-level mental health variables available, and isolate the outcome used in the analysis.
+This project asks: **Which social and economic factors are most strongly associated with poor mental health across U.S. counties?** It also asks a follow-up question: **Do the counties with the worst mental health outcomes simply reflect higher structural disadvantage, or do they appear to have worse mental health than expected even after accounting for those factors?** A county-level approach makes it possible to study broad geographic patterns across differences in poverty, education, insurance coverage, and housing strain.
 
-```{r}
-places <- read.csv("places_county_2025.csv")
-```
+The outcome variable comes from the CDC’s PLACES dataset, which provides model-based local health estimates across the United States. I use the county-level measure Frequent Mental Distress among adults, defined as the percentage of adults reporting that their mental health was "not good" for 14 or more of the past 30 days (Centers for Disease Control and Prevention, "Health Status \| PLACES"). Because this project compares counties, I use the age-adjusted prevalence of this measure.
 
-```{r}
-dim(places)
-```
+To examine possible correlates of poor mental health, I merge PLACES data with county-level indicators from the American Community Survey (ACS) 5-year estimates, including poverty, household income, unemployment, educational attainment, insurance coverage, and housing conditions (United States Census Bureau). Together, these measures provide a county-level dataset for assessing how structural social and economic conditions are associated with poor mental health across the United States.
 
-```{r}
-head(places)
-```
+This project does not aim to make causal claims; instead, it aims to identify which county-level conditions are most closely associated with poor mental health and whether the highest-burden counties appear worse than those conditions alone would predict.
 
-```{r}
-colnames(places)
-```
+# Methods
 
-```{r}
-str(places)
-```
+To answer this research question, I combined county-level data from two public sources. The outcome variable comes from the CDC’s 2025 PLACES county dataset, from which I use the age-adjusted prevalence of frequent mental distress among adults (MHLTH_AdjPrev) as my measure of poor mental health. To examine possible social and economic drivers of this outcome, I merged the PLACES data with county-level estimates from the American Community Survey (ACS) 5-year data obtained through the Census API.
+
+The ACS predictors in this analysis are poverty rate, median household income, unemployment rate, percentage of adults with a bachelor’s degree or higher, uninsured rate, and housing cost burden. These variables capture several major dimensions of community conditions, including economic hardship, labor market stability, educational attainment, access to health insurance, and housing-related financial strain. By joining the PLACES and ACS datasets using county FIPS/GEOID identifiers, I created a county-level dataset to examine how structural social and economic factors are associated with poor mental health across U.S. communities.
+
+# Results
+
+## County-Level Mental Health Overview
+
+I first present a publication-ready table showing counties with the highest levels of poor mental health. This helps identify which counties appear at the top of the distribution before turning to a national map.
 
 ```{r}
+#| echo: false
+#| include: false
+#| message: false
+#| warning: false
+
 library(dplyr)
+library(tidyr)
+library(tidycensus)
+library(tigris)
+
+places <- read.csv("places_county_2025.csv")
 
 places_mh <- places %>%
   select(
@@ -53,36 +62,8 @@ places_mh <- places %>%
   rename(
     poor_mental_health = MHLTH_AdjPrev,
     poor_mental_health_ci = MHLTH_Adj95CI
-  )
-```
-
-```{r}
-dim(places_mh)
-```
-
-```{r}
-head(places_mh)
-```
-
-```{r}
-str(places_mh)
-```
-
-## Load and inspect ACS predictors
-
-I next load the ACS data to obtain the county-level social and economic predictors and prepare them for merging with the PLACES mental health outcome.
-
-```{r}
-library(tidycensus)
-
-api_key <- Sys.getenv("CENSUS_API_KEY")
-census_api_key(api_key, install = FALSE)
-```
-
-```{r}
-library(tidycensus)
-library(dplyr)
-library(tidyr)
+  ) %>%
+  mutate(CountyFIPS = as.character(CountyFIPS))
 
 api_key <- Sys.getenv("CENSUS_API_KEY")
 census_api_key(api_key, install = FALSE)
@@ -101,13 +82,7 @@ acs_raw <- get_acs(
     rent_burden_35_plus = "DP04_0142PE"
   )
 )
-```
 
-```{r}
-unique(acs_raw$variable)
-```
-
-```{r}
 acs_county <- acs_raw %>%
   select(GEOID, NAME, variable, estimate) %>%
   pivot_wider(names_from = variable, values_from = estimate) %>%
@@ -118,7 +93,8 @@ acs_county <- acs_raw %>%
     rent_burden_35_plus = DP04_0142P
   ) %>%
   mutate(
-    housing_cost_burden = rent_burden_30_34_9 + rent_burden_35_plus
+    housing_cost_burden = rent_burden_30_34_9 + rent_burden_35_plus,
+    GEOID = as.character(GEOID)
   ) %>%
   select(
     GEOID,
@@ -128,32 +104,11 @@ acs_county <- acs_raw %>%
     unemployment_rate,
     bachelors_or_higher,
     uninsured_rate,
-    rent_burden_30_34_9,
-    rent_burden_35_plus,
     housing_cost_burden
   )
-```
 
-```{r}
-places_mh <- places_mh %>%
-  mutate(CountyFIPS = as.character(CountyFIPS))
-
-acs_county <- acs_county %>%
-  mutate(GEOID = as.character(GEOID))
-```
-
-```{r}
 analysis_df <- places_mh %>%
   left_join(acs_county, by = c("CountyFIPS" = "GEOID"))
-```
-
-## Load and inspect Census GEOIDs and TIGER/Line shapefiles
-
-Finally, I load county geographic identifiers and shapefiles so the merged dataset can be mapped and explored spatially across U.S. counties.
-
-```{r}
-library(tigris)
-library(dplyr)
 
 counties_sf <- counties(year = 2024, cb = TRUE) %>%
   mutate(GEOID = as.character(GEOID))
@@ -164,214 +119,6 @@ analysis_df <- analysis_df %>%
 map_df <- counties_sf %>%
   left_join(analysis_df, by = c("GEOID" = "CountyFIPS"))
 ```
-
-## EDA plots
-
-To begin exploration, I first examine the distribution of the outcome variable. This helps show how poor mental health is distributed across counties and whether there are signs of skewness, clustering, or unusual values.
-
-```{r}
-# Outcome distribution
-library(ggplot2)
-library(dplyr)
-
-ggplot(analysis_df, aes(x = poor_mental_health)) +
-  geom_histogram(bins = 30) +
-  labs(
-    title = "Distribution of Poor Mental Health Across U.S. Counties",
-    x = "Age-adjusted prevalence of frequent mental distress",
-    y = "Number of counties"
-  ) +
-  theme_minimal()
-```
-
-Next, I examine the distributions of the ACS predictor variables. This helps identify their ranges and variation across counties and can reveal whether any predictors are especially skewed or concentrated.
-
-```{r}
-## Predictor distributions
-library(tidyr)
-library(ggplot2)
-library(dplyr)
-
-analysis_df %>%
-  select(
-    poverty_rate,
-    median_household_income,
-    unemployment_rate,
-    bachelors_or_higher,
-    uninsured_rate,
-    housing_cost_burden
-  ) %>%
-  pivot_longer(
-    cols = everything(),
-    names_to = "variable",
-    values_to = "value"
-  ) %>%
-  ggplot(aes(x = value)) +
-  geom_histogram(bins = 30) +
-  facet_wrap(~ variable, scales = "free") +
-  labs(
-    title = "Distributions of ACS Predictor Variables",
-    x = "Value",
-    y = "Number of counties"
-  ) +
-  theme_minimal()
-```
-
-I then create scatterplots of poor mental health against each predictor. This provides an initial look at the direction and apparent strength of the relationship between the outcome and each county-level factor.
-
-```{r}
-## Scatterplots of poor mental health vs each predictor
-analysis_df %>%
-  select(
-    poor_mental_health,
-    poverty_rate,
-    median_household_income,
-    unemployment_rate,
-    bachelors_or_higher,
-    uninsured_rate,
-    housing_cost_burden
-  ) %>%
-  pivot_longer(
-    cols = -poor_mental_health,
-    names_to = "predictor",
-    values_to = "value"
-  ) %>%
-  ggplot(aes(x = value, y = poor_mental_health)) +
-  geom_point(alpha = 0.4, size = 1) +
-  geom_smooth(method = "lm", se = FALSE) +
-  facet_wrap(~ predictor, scales = "free_x") +
-  labs(
-    title = "Poor Mental Health vs. Social and Economic Predictors",
-    x = "Predictor value",
-    y = "Poor mental health prevalence"
-  ) +
-  theme_minimal()
-```
-
-Because some predictors appear more strongly related to poor mental health than others, I also look at a few of the clearest bivariate relationships separately. These focused plots make it easier to inspect the patterns for poverty, income, and education in more detail.
-
-```{r}
-# A focused set of scatterplots for the strongest-looking predictors
-ggplot(analysis_df, aes(x = poverty_rate, y = poor_mental_health)) +
-  geom_point(alpha = 0.4) +
-  geom_smooth(method = "lm", se = FALSE) +
-  labs(
-    title = "Poor Mental Health vs. Poverty Rate",
-    x = "Poverty rate",
-    y = "Poor mental health prevalence"
-  ) +
-  theme_minimal()
-```
-
-```{r}
-ggplot(analysis_df, aes(x = median_household_income, y = poor_mental_health)) +
-  geom_point(alpha = 0.4) +
-  geom_smooth(method = "lm", se = FALSE) +
-  labs(
-    title = "Poor Mental Health vs. Median Household Income",
-    x = "Median household income",
-    y = "Poor mental health prevalence"
-  ) +
-  theme_minimal()
-```
-
-```{r}
-ggplot(analysis_df, aes(x = bachelors_or_higher, y = poor_mental_health)) +
-  geom_point(alpha = 0.4) +
-  geom_smooth(method = "lm", se = FALSE) +
-  labs(
-    title = "Poor Mental Health vs. Bachelor's Degree Attainment",
-    x = "Percent with bachelor's degree or higher",
-    y = "Poor mental health prevalence"
-  ) +
-  theme_minimal()
-```
-
-To understand how the predictors relate to one another as well as to the outcome, I compute a correlation heatmap. This is useful for identifying which variables move together and whether some predictors may capture overlapping dimensions of disadvantage.
-
-```{r}
-# Correlation heatmap
-library(corrplot)
-
-cor_df <- analysis_df %>%
-  select(
-    poor_mental_health,
-    poverty_rate,
-    median_household_income,
-    unemployment_rate,
-    bachelors_or_higher,
-    uninsured_rate,
-    housing_cost_burden
-  ) %>%
-  na.omit()
-
-cor_matrix <- cor(cor_df)
-
-corrplot(cor_matrix, method = "color", type = "upper", tl.cex = 0.8)
-```
-
-I also map county-level poor mental health to explore whether the outcome shows broad geographic patterning. A choropleth is helpful for seeing whether higher burdens appear clustered in particular parts of the country.
-
-```{r}
-# County-level choropleth of poor mental health
-library(ggplot2)
-library(dplyr)
-
-ggplot(map_df) +
-  geom_sf(aes(fill = poor_mental_health), color = NA) +
-  coord_sf(
-    xlim = c(-125, -66),
-    ylim = c(24, 50),
-    expand = FALSE
-  ) +
-  labs(
-    title = "Poor Mental Health Across U.S. Counties",
-    fill = "Poor mental\nhealth"
-  ) +
-  theme_minimal()
-```
-
-Finally, I compare average poor mental health across states as a simple geographic summary. This provides a quick way to see whether some states tend to have systematically higher county-level poor mental health than others.
-
-```{r}
-# Quick regional-style comparison using state averages
-analysis_df %>%
-  group_by(StateAbbr) %>%
-  summarize(mean_poor_mental_health = mean(poor_mental_health, na.rm = TRUE)) %>%
-  ggplot(aes(x = reorder(StateAbbr, mean_poor_mental_health), y = mean_poor_mental_health)) +
-  geom_col() +
-  coord_flip() +
-  labs(
-    title = "Average Poor Mental Health by State",
-    x = "State",
-    y = "Average poor mental health prevalence"
-  ) +
-  theme_minimal()
-```
-
-# Introduction
-
-Mental health is a core part of overall well-being, and it is shaped not only by individual circumstances but also by the broader conditions in which people live. The CDC notes that mental health is influenced by factors at the individual, family, community, and societal levels, which aligns with the social determinants of health framework (Centers for Disease Control and Prevention, "About Mental Health"; Office of Disease Prevention and Health Promotion). Because these conditions affect stress, stability, access to care, and quality of life, they may help explain why some communities experience a higher burden of poor mental health than others.
-
-This project asks: **Which social and economic factors are most strongly associated with poor mental health across U.S. counties?** It also asks a follow-up question: **Do the counties with the worst mental health outcomes simply reflect higher structural disadvantage, or do they appear to have worse mental health than expected even after accounting for those factors?** A county-level approach makes it possible to study broad geographic patterns across differences in poverty, education, insurance coverage, and housing strain.
-
-The outcome variable comes from the CDC’s PLACES dataset, which provides model-based local health estimates across the United States. I use the county-level measure Frequent Mental Distress among adults, defined as the percentage of adults reporting that their mental health was "not good" for 14 or more of the past 30 days (Centers for Disease Control and Prevention, "Health Status | PLACES"). Because this project compares counties, I use the age-adjusted prevalence of this measure.
-
-To examine possible correlates of poor mental health, I merge PLACES data with county-level indicators from the American Community Survey (ACS) 5-year estimates, including poverty, household income, unemployment, educational attainment, insurance coverage, and housing conditions (United States Census Bureau). Together, these measures provide a county-level dataset for assessing how structural social and economic conditions are associated with poor mental health across the United States.
-
-This project does not aim to make causal claims; instead, it aims to identify which county-level conditions are most closely associated with poor mental health and whether the highest-burden counties appear worse than those conditions alone would predict.
-
-# Methods
-
-To answer this research question, I combined county-level data from two public sources. The outcome variable comes from the CDC’s 2025 PLACES county dataset, from which I use the age-adjusted prevalence of frequent mental distress among adults (MHLTH_AdjPrev) as my measure of poor mental health. To examine possible social and economic drivers of this outcome, I merged the PLACES data with county-level estimates from the American Community Survey (ACS) 5-year data obtained through the Census API.
-
-The ACS predictors in this analysis are poverty rate, median household income, unemployment rate, percentage of adults with a bachelor’s degree or higher, uninsured rate, and housing cost burden. These variables capture several major dimensions of community conditions, including economic hardship, labor market stability, educational attainment, access to health insurance, and housing-related financial strain. By joining the PLACES and ACS datasets using county FIPS/GEOID identifiers, I created a county-level dataset to examine how structural social and economic factors are associated with poor mental health across U.S. communities.
-
-# Results
-
-## County-Level Mental Health Overview
-
-I first present a publication-ready table showing counties with the highest levels of poor mental health. This helps identify which counties appear at the top of the distribution before turning to a national map.
 
 ```{r}
 #| label: tbl-mental-health-county
@@ -954,6 +701,7 @@ ggplot(final_coef_df, aes(x = estimate, y = term, color = direction)) +
 The diverging lollipop plot shows that poverty rate has the strongest positive association with poor mental health, while bachelor’s degree attainment has the strongest negative association. Unemployment rate and housing cost burden also have meaningful positive associations, while median household income and uninsured rate are negatively associated, indicating that economic hardship and lower educational attainment are the factors most strongly linked to poor mental health across U.S. counties.
 
 # Conclusion and Summary
+
 This project examined which social and economic factors are most strongly associated with poor mental health across U.S. counties. Poor mental health showed clear geographic clustering, with especially high burdens in parts of Appalachia and the South, and many of the highest-burden counties were located in West Virginia.
 
 Across the analysis, counties with higher poverty, unemployment, and housing cost burden tended to have worse mental health outcomes, while counties with higher income and higher educational attainment tended to have better outcomes. The final standardized coefficient plot suggested that poverty rate had the strongest positive association with poor mental health, while bachelor’s degree attainment had the strongest negative association. Overall, these results indicate that economic hardship and lower educational attainment are the factors most strongly linked to poor mental health in this county-level analysis.
