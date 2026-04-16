@@ -1,6 +1,7 @@
 ---
-title: "What Drives Poor Mental Health Across U.S. Communities? A County-Level Analysis of Social and Economic Determinants in the United States"
+title: "What Drives Poor Mental Health Across U.S. Communities? About the Data"
 date: "4/15/2026"
+author: "Andre Gala-Garza"
 format: html
 editor: visual
 embed-resources: true
@@ -8,9 +9,23 @@ embed-resources: true
 
 # Data Processing
 
+This page describes the raw data sources used in the project, the steps I took to clean and merge them, and the exploratory analysis I used to understand the data before creating the final results. Because the research question is county-level, the goal of the data preparation process was to build one analytical dataset with one row per U.S. county or county-equivalent, containing both the mental health outcome and a set of county-level social and economic predictors.
+
+## Overview of the raw data sources
+
+This project combines three main data sources.
+
+First, I use the **CDC PLACES 2025 county dataset** for the mental health outcome. PLACES is a county-level public health dataset that includes many health indicators, usually reported as crude prevalence, age-adjusted prevalence, and confidence intervals. From this source, I use the age-adjusted prevalence of frequent mental distress as the main outcome.
+
+Second, I use **American Community Survey (ACS) 5-year county estimates** retrieved through the Census API. These data provide county-level socioeconomic indicators such as poverty, income, unemployment, educational attainment, insurance coverage, and housing burden. I use these variables as predictors because they reflect several dimensions of the social determinants of health.
+
+Third, I use **U.S. Census county shapefiles** through the `tigris` package so I can create county-level maps. These shapefiles include county boundaries and geographic identifiers that can be joined to the main analysis dataset.
+
 ## Load and inspect PLACES mental health data
 
 I begin by loading and inspecting the PLACES data so I can confirm its structure, identify the county-level mental health variables available, and isolate the outcome used in the analysis.
+
+The raw PLACES file contains many health measures, but only a subset is needed for this project. I keep the variables needed to identify counties, describe population size, and measure poor mental health.
 
 ```{r}
 places <- read.csv("places_county_2025.csv")
@@ -31,6 +46,19 @@ colnames(places)
 ```{r}
 str(places)
 ```
+
+The main PLACES variables used here are:
+
+- `StateAbbr`: state abbreviation
+- `StateDesc`: full state name
+- `CountyName`: county name
+- `CountyFIPS`: county FIPS code
+- `TotalPopulation`: total county population
+- `TotalPop18plus`: adult county population
+- `MHLTH_AdjPrev`: age-adjusted prevalence of frequent mental distress
+- `MHLTH_Adj95CI`: confidence interval for the age-adjusted prevalence
+
+I then create a smaller dataset, `places_mh`, that keeps only the relevant columns. I also rename the mental health variables so they are easier to interpret later in the analysis. In particular, I rename `MHLTH_AdjPrev` to `poor_mental_health`, since it is the primary outcome variable throughout the project.
 
 ```{r}
 library(dplyr)
@@ -68,6 +96,24 @@ str(places_mh)
 
 I next load the ACS data to obtain the county-level social and economic predictors and prepare them for merging with the PLACES mental health outcome.
 
+I retrieve the ACS data through the Census API using the `tidycensus` package. I use **ACS 5-year estimates** because they provide stable county-level coverage across the United States. The raw API output is returned in a long format, where each row represents one variable for one county. Since the final analysis requires one row per county, I later reshape the data to wide format.
+
+The ACS predictors were chosen to represent several major dimensions of county-level structural conditions:
+
+- `poverty_rate`
+- `median_household_income`
+- `unemployment_rate`
+- `bachelors_or_higher`
+- `uninsured_rate`
+- `housing_cost_burden`
+
+For housing cost burden, I combine two ACS measures related to rent burden:
+
+- `rent_burden_30_34_9`
+- `rent_burden_35_plus`
+
+Summing these gives the share of renters spending at least 30% of household income on rent.
+
 ```{r}
 library(tidycensus)
 
@@ -99,9 +145,13 @@ acs_raw <- get_acs(
 )
 ```
 
+I inspect the variable labels returned by the API because some ACS profile variables come back with slightly different names than expected, so it is important to verify them before reshaping and renaming.
+
 ```{r}
 unique(acs_raw$variable)
 ```
+
+I then convert the ACS data from long format to wide format using `pivot_wider()`, rename the returned ACS variable names to clearer labels, create the combined housing burden variable, and keep only the variables needed for the main analysis.
 
 ```{r}
 acs_county <- acs_raw %>%
@@ -130,6 +180,12 @@ acs_county <- acs_raw %>%
   )
 ```
 
+## Merge PLACES and ACS data
+
+After preparing the PLACES and ACS data separately, I merge them into a single county-level analysis dataset.
+
+Before joining the files, I convert both county identifier variables to character format. This is an important step because county FIPS codes can lose leading zeros if they are stored as numeric values, which would cause counties not to match correctly during the join. In the PLACES data, the county identifier is `CountyFIPS`, while in the ACS data it is `GEOID`.
+
 ```{r}
 places_mh <- places_mh %>%
   mutate(CountyFIPS = as.character(CountyFIPS))
@@ -138,14 +194,25 @@ acs_county <- acs_county %>%
   mutate(GEOID = as.character(GEOID))
 ```
 
+I then join the two datasets using the county FIPS/GEOID code. The result is `analysis_df`, the main analytical dataset used for regression modeling, tables, and most figures in the report.
+
 ```{r}
 analysis_df <- places_mh %>%
   left_join(acs_county, by = c("CountyFIPS" = "GEOID"))
 ```
 
+At this point, each row in `analysis_df` represents one county, with:
+
+- county identifiers and names
+- population fields
+- the poor mental health outcome
+- the selected ACS predictors
+
 ## Load and inspect Census GEOIDs and TIGER/Line shapefiles
 
 Finally, I load county geographic identifiers and shapefiles so the merged dataset can be mapped and explored spatially across U.S. counties.
+
+I use the `tigris` package to retrieve Census county shapefiles in a simplified cartographic boundary format. These shapefiles include polygon geometry and county GEOIDs, which makes them straightforward to merge with the analytical data. As before, I convert the identifier to character format before joining.
 
 ```{r}
 library(tigris)
@@ -160,6 +227,12 @@ analysis_df <- analysis_df %>%
 map_df <- counties_sf %>%
   left_join(analysis_df, by = c("GEOID" = "CountyFIPS"))
 ```
+
+The resulting object, `map_df`, is used specifically for choropleth mapping and other geographic visualizations. It combines the county geometry with the mental health outcome and predictor variables from `analysis_df`.
+
+## Exploratory data analysis
+
+Before building the final set of results, I explored the data to understand the distributions of the outcome and predictors, inspect basic relationships, and identify patterns worth emphasizing later in the analysis.
 
 ## EDA plots
 
@@ -179,6 +252,8 @@ ggplot(analysis_df, aes(x = poor_mental_health)) +
   ) +
   theme_minimal()
 ```
+
+The distribution of poor mental health appears roughly unimodal and centered around the high teens, with most counties falling between about 16% and 21%.
 
 Next, I examine the distributions of the ACS predictor variables. This helps identify their ranges and variation across counties and can reveal whether any predictors are especially skewed or concentrated.
 
@@ -213,6 +288,8 @@ analysis_df %>%
   theme_minimal()
 ```
 
+The ACS predictors show substantial variation across counties, with several variables, especially poverty rate, uninsured rate, and median household income, appearing somewhat right-skewed.
+
 I then create scatterplots of poor mental health against each predictor. This provides an initial look at the direction and apparent strength of the relationship between the outcome and each county-level factor.
 
 ```{r}
@@ -244,6 +321,8 @@ analysis_df %>%
   theme_minimal()
 ```
 
+These scatterplots suggest that poor mental health tends to be higher in counties with more poverty, unemployment, uninsured residents, and housing burden, and lower in counties with higher income and educational attainment.
+
 Because some predictors appear more strongly related to poor mental health than others, I also look at a few of the clearest bivariate relationships separately. These focused plots make it easier to inspect the patterns for poverty, income, and education in more detail.
 
 ```{r}
@@ -259,6 +338,8 @@ ggplot(analysis_df, aes(x = poverty_rate, y = poor_mental_health)) +
   theme_minimal()
 ```
 
+This plot shows a clear positive relationship, with counties that have higher poverty rates generally experiencing higher levels of poor mental health.
+
 ```{r}
 ggplot(analysis_df, aes(x = median_household_income, y = poor_mental_health)) +
   geom_point(alpha = 0.4) +
@@ -271,6 +352,8 @@ ggplot(analysis_df, aes(x = median_household_income, y = poor_mental_health)) +
   theme_minimal()
 ```
 
+This plot shows a strong negative relationship, suggesting that counties with higher median household income tend to have lower poor mental health prevalence.
+
 ```{r}
 ggplot(analysis_df, aes(x = bachelors_or_higher, y = poor_mental_health)) +
   geom_point(alpha = 0.4) +
@@ -282,6 +365,8 @@ ggplot(analysis_df, aes(x = bachelors_or_higher, y = poor_mental_health)) +
   ) +
   theme_minimal()
 ```
+
+This plot also shows a strong negative relationship, indicating that counties with higher educational attainment tend to have lower levels of poor mental health.
 
 To understand how the predictors relate to one another as well as to the outcome, I compute a correlation heatmap. This is useful for identifying which variables move together and whether some predictors may capture overlapping dimensions of disadvantage.
 
@@ -306,6 +391,8 @@ cor_matrix <- cor(cor_df)
 corrplot(cor_matrix, method = "color", type = "upper", tl.cex = 0.8)
 ```
 
+The heatmap suggests that poor mental health is positively correlated with poverty and unemployment and negatively correlated with income and bachelor’s degree attainment, while several predictors are also moderately correlated with one another.
+
 I also map county-level poor mental health to explore whether the outcome shows broad geographic patterning. A choropleth is helpful for seeing whether higher burdens appear clustered in particular parts of the country.
 
 ```{r}
@@ -327,6 +414,8 @@ ggplot(map_df) +
   theme_minimal()
 ```
 
+The map suggests that poor mental health is not evenly distributed across the country, with higher burdens appearing in parts of Appalachia, the South, and some rural western areas.
+
 Finally, I compare average poor mental health across states as a simple geographic summary. This provides a quick way to see whether some states tend to have systematically higher county-level poor mental health than others.
 
 ```{r}
@@ -344,3 +433,5 @@ analysis_df %>%
   ) +
   theme_minimal()
 ```
+
+The state averages show noticeable geographic differences, with some states averaging substantially higher county-level poor mental health than others.
