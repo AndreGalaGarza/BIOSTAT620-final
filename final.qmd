@@ -13,6 +13,7 @@ embed-resources: true
 # Data Processing (TODO: move to Quarto website)
 
 ## Load and inspect PLACES mental health data
+
 ```{r}
 places <- read.csv("places_county_2025.csv")
 ```
@@ -28,9 +29,11 @@ head(places)
 ```{r}
 colnames(places)
 ```
+
 ```{r}
 str(places)
 ```
+
 ```{r}
 library(dplyr)
 
@@ -64,6 +67,7 @@ str(places_mh)
 ```
 
 ## Load and inspect ACS predictors
+
 ```{r}
 library(tidycensus)
 
@@ -140,6 +144,7 @@ analysis_df <- places_mh %>%
 ```
 
 ## Load and inspect Census GEOIDs and TIGER/Line shapefiles
+
 ```{r}
 library(tigris)
 library(dplyr)
@@ -153,6 +158,7 @@ analysis_df <- analysis_df %>%
 map_df <- counties_sf %>%
   left_join(analysis_df, by = c("GEOID" = "CountyFIPS"))
 ```
+
 ## EDA plots
 
 ```{r}
@@ -229,7 +235,6 @@ analysis_df %>%
   ) +
   theme_minimal()
 ```
-
 
 ```{r}
 # A focused set of scatterplots for the strongest-looking predictors
@@ -327,18 +332,20 @@ Mental health is a core part of overall well-being, and researchers increasingly
 
 This project asks the following question: **Which social and economic factors are most strongly associated with poor mental health across U.S. counties?** A county-level approach helps reveal broader geographic patterns that may not be visible in individual-level analyses. Counties provide meaningful variation in economic conditions, educational attainment, insurance coverage, and housing strain, while also allowing for nationwide comparison.
 
-The outcome variable comes from the CDC’s PLACES dataset, which provides model-based local health estimates across the United States. I use the county-level measure Frequent Mental Distress among adults, defined as the percentage of adults reporting that their mental health was "not good" for 14 or more of the past 30 days (Centers for Disease Control and Prevention, "Health Status | PLACES"). Because this project compares counties, I use the age-adjusted prevalence of this measure.
+The outcome variable comes from the CDC’s PLACES dataset, which provides model-based local health estimates across the United States. I use the county-level measure Frequent Mental Distress among adults, defined as the percentage of adults reporting that their mental health was "not good" for 14 or more of the past 30 days (Centers for Disease Control and Prevention, "Health Status \| PLACES"). Because this project compares counties, I use the age-adjusted prevalence of this measure.
 
 To examine possible social and economic correlates of poor mental health, I merge PLACES data with county-level indicators from the American Community Survey (ACS) 5-year estimates. The ACS 5-year data provide official U.S. Census Bureau estimates for counties nationwide, including measures of poverty, household income, unemployment, educational attainment, insurance coverage, and housing conditions (United States Census Bureau). Together, these measures represent key dimensions of the social determinants of health and create a county-level dataset for assessing how structural conditions are associated with poor mental health across the United States.
 
 This project is important both substantively and methodologically. Substantively, it helps clarify how place may shape mental health outcomes. Methodologically, it shows how publicly available health and Census data can be combined to study an important public health issue through data science tools such as geographic joins, regression modeling, and interactive visualization. The goal is not to make causal claims, but to provide a clear picture of which county-level social and economic conditions are most closely associated with poor mental health.
 
 # Methods
+
 To answer this research question, I combined county-level data from two public sources. The outcome variable comes from the CDC’s 2025 PLACES county dataset, from which I use the age-adjusted prevalence of frequent mental distress among adults (MHLTH_AdjPrev) as my measure of poor mental health. To examine possible social and economic drivers of this outcome, I merged the PLACES data with county-level estimates from the American Community Survey (ACS) 5-year data obtained through the Census API.
 
 The ACS predictors in this analysis are poverty rate, median household income, unemployment rate, percentage of adults with a bachelor’s degree or higher, uninsured rate, and housing cost burden. These variables capture several major dimensions of community conditions, including economic hardship, labor market stability, educational attainment, access to health insurance, and housing-related financial strain. By joining the PLACES and ACS datasets using county FIPS/GEOID identifiers, I created a county-level dataset to examine how structural social and economic factors are associated with poor mental health across U.S. communities.
 
-# Code + Results
+# Results
+
 ## County-Level Mental Health Overview
 
 I first present a publication-ready table showing counties with the highest levels of poor mental health. This helps identify which counties appear at the top of the distribution before turning to a national map.
@@ -450,15 +457,891 @@ leaflet(map_data) %>%
 
 The map suggests broad spatial clustering, with relatively high levels of poor mental health concentrated in parts of Appalachia, the Southeast, and portions of the rural South, while lower levels appear more common in parts of the Great Plains, Upper Midwest, and some Northeastern counties. Overall, the choropleth indicates that poor mental health is not randomly distributed, but instead shows clear regional patterns across U.S. counties.
 
-# Results
+## Associations Between Poor Mental Health and County-Level Predictors
+
+To explore how poor mental health varies with each county-level predictor, I next create a set of side-by-side scatterplots. Faceting the plots allows for direct visual comparison of the direction and strength of the relationship between poor mental health and each predictor.
+
+```{r}
+#| label: fig-scatter-predictors
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 12
+#| fig-height: 8
+#| fig-cap: "Scatterplots of poor mental health versus county-level social and economic predictors."
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(scales)
+
+scatter_df <- analysis_df %>%
+  select(
+    poor_mental_health,
+    poverty_rate,
+    median_household_income,
+    unemployment_rate,
+    bachelors_or_higher,
+    uninsured_rate,
+    housing_cost_burden
+  ) %>%
+  pivot_longer(
+    cols = -poor_mental_health,
+    names_to = "predictor",
+    values_to = "value"
+  ) %>%
+  mutate(
+    predictor = factor(
+      predictor,
+      levels = c(
+        "poverty_rate",
+        "median_household_income",
+        "unemployment_rate",
+        "bachelors_or_higher",
+        "uninsured_rate",
+        "housing_cost_burden"
+      ),
+      labels = c(
+        "Poverty rate (%)",
+        "Median household income ($)",
+        "Unemployment rate (%)",
+        "Bachelor's degree or higher (%)",
+        "Uninsured rate (%)",
+        "Housing cost burden (%)"
+      )
+    )
+  )
+
+ggplot(scatter_df, aes(x = value, y = poor_mental_health)) +
+  geom_point(alpha = 0.35, size = 1.2, color = "gray40") +
+  geom_smooth(method = "lm", se = TRUE, color = "#2C3E50", linewidth = 0.8) +
+  facet_wrap(~ predictor, scales = "free_x", ncol = 2) +
+  labs(
+    x = NULL,
+    y = "Poor mental health (%)"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    strip.text = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold"),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold")
+  )
+```
+
+The scatterplots suggest that counties with higher poverty, unemployment, uninsured rates, and housing cost burden tend to have higher levels of poor mental health, while counties with higher median household income and higher educational attainment tend to have lower levels of poor mental health. The clearest patterns appear for poverty rate, median household income, unemployment rate, and bachelor’s degree attainment, while the relationship with housing cost burden looks weaker and more diffuse.
+
+## Regression Results: Comparing Predictor Associations
+
+To compare which county-level predictors have the strongest associations with poor mental health on a common scale, I fit a multiple linear regression model using standardized variables. I then visualize the standardized coefficients and their confidence intervals in a coefficient plot, which makes it easier to compare the relative strength and direction of each predictor’s association.
+
+```{r}
+#| label: fig-standardized-coefficient-plot
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 10
+#| fig-height: 6
+#| fig-cap: "Standardized coefficient plot from a multiple linear regression model predicting poor mental health."
+
+library(dplyr)
+library(ggplot2)
+library(broom)
+library(forcats)
+
+reg_df <- analysis_df %>%
+  select(
+    poor_mental_health,
+    poverty_rate,
+    median_household_income,
+    unemployment_rate,
+    bachelors_or_higher,
+    uninsured_rate,
+    housing_cost_burden
+  ) %>%
+  na.omit() %>%
+  mutate(across(everything(), scale)) %>%
+  as.data.frame()
+
+mental_health_model <- lm(
+  poor_mental_health ~ poverty_rate +
+    median_household_income +
+    unemployment_rate +
+    bachelors_or_higher +
+    uninsured_rate +
+    housing_cost_burden,
+  data = reg_df
+)
+
+coef_df <- tidy(mental_health_model, conf.int = TRUE) %>%
+  filter(term != "(Intercept)") %>%
+  mutate(
+    term = recode(
+      term,
+      poverty_rate = "Poverty rate",
+      median_household_income = "Median household income",
+      unemployment_rate = "Unemployment rate",
+      bachelors_or_higher = "Bachelor's degree or higher",
+      uninsured_rate = "Uninsured rate",
+      housing_cost_burden = "Housing cost burden"
+    ),
+    term = fct_reorder(term, estimate)
+  )
+
+ggplot(coef_df, aes(x = estimate, y = term)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray50") +
+  geom_errorbarh(
+    aes(xmin = conf.low, xmax = conf.high),
+    height = 0.2,
+    color = "gray50"
+  ) +
+  geom_point(size = 2.8, color = "#2C3E50") +
+  labs(
+    x = "Standardized coefficient",
+    y = NULL
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.title.x = element_text(face = "bold"),
+    axis.text.y = element_text(face = "bold"),
+    panel.grid.minor = element_blank()
+  )
+```
+The standardized coefficient plot suggests that poverty rate has the strongest positive association with poor mental health, while bachelor’s degree attainment has the strongest negative association. Unemployment rate and housing cost burden also show positive associations, whereas median household income and uninsured rate are negative, and none of the confidence intervals appear to overlap zero.
+
+## Regional Differences in Poor Mental Health
+
+To examine whether poor mental health differs across broad parts of the country, I group counties into U.S. Census regions and compare their distributions using boxplots. This helps show whether some regions tend to have higher or lower county-level burdens of poor mental health, beyond what is visible in the national map.
+
+```{r}
+#| label: fig-region-boxplot
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 10
+#| fig-height: 6
+#| fig-cap: "Distribution of poor mental health across U.S. Census regions."
+
+library(dplyr)
+library(ggplot2)
+library(forcats)
+
+region_df <- analysis_df %>%
+  mutate(
+    region = case_when(
+      StateAbbr %in% c("CT", "ME", "MA", "NH", "RI", "VT",
+                       "NJ", "NY", "PA") ~ "Northeast",
+      StateAbbr %in% c("IL", "IN", "MI", "OH", "WI",
+                       "IA", "KS", "MN", "MO", "NE", "ND", "SD") ~ "Midwest",
+      StateAbbr %in% c("DE", "FL", "GA", "MD", "NC", "SC", "VA", "DC", "WV",
+                       "AL", "KY", "MS", "TN", "AR", "LA", "OK", "TX") ~ "South",
+      StateAbbr %in% c("AZ", "CO", "ID", "MT", "NV", "NM", "UT", "WY",
+                       "AK", "CA", "HI", "OR", "WA") ~ "West",
+      TRUE ~ NA_character_
+    ),
+    region = factor(region, levels = c("Northeast", "Midwest", "South", "West"))
+  ) %>%
+  filter(!is.na(region), !is.na(poor_mental_health))
+
+ggplot(region_df, aes(x = region, y = poor_mental_health)) +
+  geom_boxplot(fill = "gray80", color = "gray30", outlier.alpha = 0.3) +
+  labs(
+    x = "Region",
+    y = "Poor mental health (%)"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.title = element_text(face = "bold"),
+    axis.text.x = element_text(face = "bold"),
+    panel.grid.minor = element_blank()
+  )
+```
+The boxplots show that counties in the South tend to have the highest median levels of poor mental health and also a somewhat wider spread than the other regions. The Northeast appears to have the lowest median, while the Midwest and West fall in between, suggesting meaningful regional differences in county-level mental health burden.
+
+## Correlations Among Poor Mental Health and County-Level Predictors
+
+To examine how the predictors relate not only to poor mental health but also to one another, I create a correlation heatmap using the outcome and all six county-level predictors. This helps identify which variables are most strongly associated with poor mental health and whether some predictors are highly correlated with each other.
+
+```{r}
+#| label: fig-correlation-heatmap
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 9
+#| fig-height: 7
+#| fig-cap: "Correlation heatmap of poor mental health and county-level predictors."
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+corr_df <- analysis_df %>%
+  select(
+    poor_mental_health,
+    poverty_rate,
+    median_household_income,
+    unemployment_rate,
+    bachelors_or_higher,
+    uninsured_rate,
+    housing_cost_burden
+  ) %>%
+  na.omit()
+
+corr_mat <- cor(corr_df)
+
+corr_long <- as.data.frame(corr_mat) %>%
+  tibble::rownames_to_column("Var1") %>%
+  pivot_longer(
+    cols = -Var1,
+    names_to = "Var2",
+    values_to = "correlation"
+  ) %>%
+  mutate(
+    Var1 = factor(
+      Var1,
+      levels = c(
+        "poor_mental_health",
+        "poverty_rate",
+        "median_household_income",
+        "unemployment_rate",
+        "bachelors_or_higher",
+        "uninsured_rate",
+        "housing_cost_burden"
+      ),
+      labels = c(
+        "Poor mental health",
+        "Poverty rate",
+        "Median household income",
+        "Unemployment rate",
+        "Bachelor's degree or higher",
+        "Uninsured rate",
+        "Housing cost burden"
+      )
+    ),
+    Var2 = factor(
+      Var2,
+      levels = c(
+        "poor_mental_health",
+        "poverty_rate",
+        "median_household_income",
+        "unemployment_rate",
+        "bachelors_or_higher",
+        "uninsured_rate",
+        "housing_cost_burden"
+      ),
+      labels = c(
+        "Poor mental health",
+        "Poverty rate",
+        "Median household income",
+        "Unemployment rate",
+        "Bachelor's degree or higher",
+        "Uninsured rate",
+        "Housing cost burden"
+      )
+    )
+  )
+
+ggplot(corr_long, aes(x = Var1, y = Var2, fill = correlation)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = sprintf("%.2f", correlation)), size = 3.5) +
+  scale_fill_gradient2(
+    low = "#B2182B",
+    mid = "white",
+    high = "#2166AC",
+    midpoint = 0,
+    limits = c(-1, 1),
+    name = "Correlation"
+  ) +
+  labs(
+    x = NULL,
+    y = NULL
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, face = "bold"),
+    axis.text.y = element_text(face = "bold"),
+    panel.grid = element_blank()
+  )
+```
+The heatmap shows that poverty rate is strongly positively correlated with poor mental health, while median household income and bachelor’s degree attainment are strongly negatively correlated with it. The predictors are also correlated with each other, especially poverty and income and income and education, which suggests that several of these county-level factors capture overlapping dimensions of socioeconomic advantage and disadvantage.
+
+## Do the Highest-Burden Counties Follow the National Poverty Pattern?
+
+To look more closely at the counties with the highest levels of poor mental health, I create a scatterplot of poor mental health versus poverty rate and highlight the top 15 counties from the earlier table. This helps show whether those counties simply follow the broader national relationship or stand out even relative to counties with similar poverty levels.
+
+```{r}
+#| label: fig-top-counties-poverty
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 10
+#| fig-height: 6
+#| fig-cap: "Poor mental health versus poverty rate, with the top 15 highest-burden counties highlighted."
+
+library(dplyr)
+library(ggplot2)
+library(ggrepel)
+
+top_counties <- analysis_df %>%
+  arrange(desc(poor_mental_health)) %>%
+  slice_head(n = 15) %>%
+  mutate(label = paste0(CountyName, ", ", StateAbbr)) %>%
+  select(CountyFIPS, label)
+
+highlight_df <- analysis_df %>%
+  left_join(top_counties, by = "CountyFIPS") %>%
+  mutate(
+    group = ifelse(is.na(label), "All other counties", "Top 15 counties")
+  )
+
+ggplot(highlight_df, aes(x = poverty_rate, y = poor_mental_health)) +
+  geom_point(
+    data = filter(highlight_df, group == "All other counties"),
+    color = "gray70",
+    alpha = 0.5,
+    size = 1.5
+  ) +
+  geom_smooth(
+    method = "lm",
+    se = TRUE,
+    color = "gray40",
+    linewidth = 0.9
+  ) +
+  geom_point(
+    data = filter(highlight_df, group == "Top 15 counties"),
+    color = "#B22222",
+    size = 2.5
+  ) +
+  geom_text_repel(
+    data = filter(highlight_df, group == "Top 15 counties"),
+    aes(label = label),
+    size = 3.2,
+    box.padding = 0.3,
+    point.padding = 0.2,
+    max.overlaps = 20
+  ) +
+  labs(
+    x = "Poverty rate (%)",
+    y = "Poor mental health (%)"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.title = element_text(face = "bold"),
+    panel.grid.minor = element_blank(),
+    legend.position = "none"
+  )
+```
+The highlighted counties cluster at relatively high poverty rates and high levels of poor mental health, reinforcing the strong positive relationship seen in the national data. Most of these counties, especially in West Virginia, lie above the overall trend line, suggesting they may experience worse mental health outcomes than would be expected based on poverty alone.
+
+## Are the Highest-Burden Counties Worse Than Expected?
+
+To test whether the counties with the highest levels of poor mental health are high only because they face greater structural disadvantage, I fit a regression model using the county-level predictors and then examine the model residuals for the top 15 counties. Positive residuals indicate counties with worse mental health than the model would predict based on poverty, income, unemployment, education, insurance, and housing burden alone.
+
+```{r}
+#| label: fig-top-counties-residuals
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 10
+#| fig-height: 6
+#| fig-cap: "Regression residuals for the 15 counties with the highest observed poor mental health."
+
+library(dplyr)
+library(ggplot2)
+library(forcats)
+
+residual_df <- analysis_df %>%
+  select(
+    CountyFIPS,
+    CountyName,
+    StateAbbr,
+    poor_mental_health,
+    poverty_rate,
+    median_household_income,
+    unemployment_rate,
+    bachelors_or_higher,
+    uninsured_rate,
+    housing_cost_burden
+  ) %>%
+  na.omit()
+
+residual_model <- lm(
+  poor_mental_health ~ poverty_rate +
+    median_household_income +
+    unemployment_rate +
+    bachelors_or_higher +
+    uninsured_rate +
+    housing_cost_burden,
+  data = residual_df
+)
+
+residual_df <- residual_df %>%
+  mutate(
+    predicted_mental_health = predict(residual_model, newdata = residual_df),
+    residual = poor_mental_health - predicted_mental_health
+  )
+
+top_15_residuals <- residual_df %>%
+  arrange(desc(poor_mental_health)) %>%
+  slice_head(n = 15) %>%
+  mutate(
+    county_label = paste0(CountyName, ", ", StateAbbr),
+    county_label = fct_reorder(county_label, residual)
+  )
+
+ggplot(top_15_residuals, aes(x = residual, y = county_label)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray50") +
+  geom_segment(
+    aes(x = 0, xend = residual, y = county_label, yend = county_label),
+    color = "gray70",
+    linewidth = 0.8
+  ) +
+  geom_point(size = 3, color = "#B22222") +
+  labs(
+    x = "Residual (observed - predicted poor mental health)",
+    y = NULL
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.title.x = element_text(face = "bold"),
+    axis.text.y = element_text(face = "bold"),
+    panel.grid.minor = element_blank()
+  )
+```
+All 15 counties have positive residuals, which means they have worse poor mental health outcomes than the model predicts even after accounting for poverty, income, unemployment, education, insurance, and housing burden. The largest positive residuals appear in several West Virginia counties, such as Summers, Logan, and Mingo, suggesting that structural disadvantage alone does not fully explain why these counties have such high levels of poor mental health.
+
+## What Common Profile Do the Highest-Residual Counties Share?
+
+To explore why some counties have worse poor mental health than expected even after accounting for structural disadvantage, I compare the predictor profiles of the counties with the largest positive residuals. I standardize each predictor and display them in a heatmap so it is easier to see which counties are especially high or low relative to the national county average.
+
+```{r}
+#| label: fig-top-residual-counties-heatmap
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 10
+#| fig-height: 7
+#| fig-cap: "Standardized predictor profiles for the 10 counties with the largest positive residuals."
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(forcats)
+
+profile_df <- analysis_df %>%
+  select(
+    CountyFIPS,
+    CountyName,
+    StateAbbr,
+    poor_mental_health,
+    poverty_rate,
+    median_household_income,
+    unemployment_rate,
+    bachelors_or_higher,
+    uninsured_rate,
+    housing_cost_burden
+  ) %>%
+  na.omit()
+
+profile_model <- lm(
+  poor_mental_health ~ poverty_rate +
+    median_household_income +
+    unemployment_rate +
+    bachelors_or_higher +
+    uninsured_rate +
+    housing_cost_burden,
+  data = profile_df
+)
+
+profile_df <- profile_df %>%
+  mutate(
+    predicted_mental_health = predict(profile_model, newdata = profile_df),
+    residual = poor_mental_health - predicted_mental_health
+  )
+
+top_residual_counties <- profile_df %>%
+  arrange(desc(residual)) %>%
+  slice_head(n = 10) %>%
+  mutate(
+    county_label = paste0(CountyName, ", ", StateAbbr)
+  ) %>%
+  select(
+    county_label,
+    poverty_rate,
+    median_household_income,
+    unemployment_rate,
+    bachelors_or_higher,
+    uninsured_rate,
+    housing_cost_burden
+  )
+
+top_residual_scaled <- top_residual_counties %>%
+  mutate(
+    poverty_rate = as.numeric(scale(poverty_rate)),
+    median_household_income = as.numeric(scale(median_household_income)),
+    unemployment_rate = as.numeric(scale(unemployment_rate)),
+    bachelors_or_higher = as.numeric(scale(bachelors_or_higher)),
+    uninsured_rate = as.numeric(scale(uninsured_rate)),
+    housing_cost_burden = as.numeric(scale(housing_cost_burden))
+  ) %>%
+  pivot_longer(
+    cols = -county_label,
+    names_to = "predictor",
+    values_to = "z_score"
+  ) %>%
+  mutate(
+    predictor = factor(
+      predictor,
+      levels = c(
+        "poverty_rate",
+        "median_household_income",
+        "unemployment_rate",
+        "bachelors_or_higher",
+        "uninsured_rate",
+        "housing_cost_burden"
+      ),
+      labels = c(
+        "Poverty rate",
+        "Median household income",
+        "Unemployment rate",
+        "Bachelor's degree or higher",
+        "Uninsured rate",
+        "Housing cost burden"
+      )
+    ),
+    county_label = fct_rev(factor(county_label))
+  )
+
+ggplot(top_residual_scaled, aes(x = predictor, y = county_label, fill = z_score)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(
+    low = "#B2182B",
+    mid = "white",
+    high = "#2166AC",
+    midpoint = 0,
+    name = "Z-score"
+  ) +
+  labs(
+    x = NULL,
+    y = NULL
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, face = "bold"),
+    axis.text.y = element_text(face = "bold"),
+    panel.grid = element_blank()
+  )
+```
+The highest-residual counties do not share one perfectly uniform profile, but many show a common pattern of higher poverty, lower income, and lower educational attainment relative to other counties. At the same time, the heatmap suggests that these counties do not all stand out for the same reason, which implies that poor mental health beyond what the model predicts may reflect a mix of disadvantages or additional unmeasured county-level factors.
+
+## How Do the Highest-Burden Counties Compare to the National Pattern?
+
+To connect the focused analysis of the highest-burden counties back to the full national sample, I compare each county’s observed poor mental health to the value predicted by the regression model. Counties above the 45-degree line have worse mental health than expected given their structural disadvantage, while counties below the line have better mental health than expected.
+
+```{r}
+#| label: fig-observed-vs-predicted
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 10
+#| fig-height: 7
+#| fig-cap: "Observed versus predicted poor mental health for all U.S. counties, with the top 15 highest-burden counties highlighted."
+
+library(dplyr)
+library(ggplot2)
+library(ggrepel)
+
+obs_pred_df <- analysis_df %>%
+  select(
+    CountyFIPS,
+    CountyName,
+    StateAbbr,
+    poor_mental_health,
+    poverty_rate,
+    median_household_income,
+    unemployment_rate,
+    bachelors_or_higher,
+    uninsured_rate,
+    housing_cost_burden
+  ) %>%
+  na.omit()
+
+obs_pred_model <- lm(
+  poor_mental_health ~ poverty_rate +
+    median_household_income +
+    unemployment_rate +
+    bachelors_or_higher +
+    uninsured_rate +
+    housing_cost_burden,
+  data = obs_pred_df
+)
+
+obs_pred_df <- obs_pred_df %>%
+  mutate(
+    predicted_mental_health = predict(obs_pred_model, newdata = obs_pred_df)
+  )
+
+top_15_counties <- obs_pred_df %>%
+  arrange(desc(poor_mental_health)) %>%
+  slice_head(n = 15) %>%
+  mutate(
+    county_label = paste0(CountyName, ", ", StateAbbr)
+  ) %>%
+  select(CountyFIPS, county_label)
+
+obs_pred_df <- obs_pred_df %>%
+  left_join(top_15_counties, by = "CountyFIPS") %>%
+  mutate(
+    group = ifelse(is.na(county_label), "All other counties", "Top 15 counties")
+  )
+
+plot_limits <- range(
+  c(obs_pred_df$predicted_mental_health, obs_pred_df$poor_mental_health),
+  na.rm = TRUE
+)
+
+ggplot(obs_pred_df, aes(x = predicted_mental_health, y = poor_mental_health)) +
+  geom_abline(
+    slope = 1,
+    intercept = 0,
+    linetype = "dashed",
+    color = "gray50",
+    linewidth = 0.8
+  ) +
+  geom_point(
+    data = filter(obs_pred_df, group == "All other counties"),
+    color = "gray70",
+    alpha = 0.5,
+    size = 1.5
+  ) +
+  geom_point(
+    data = filter(obs_pred_df, group == "Top 15 counties"),
+    color = "#B22222",
+    size = 2.5
+  ) +
+  geom_text_repel(
+    data = filter(obs_pred_df, group == "Top 15 counties"),
+    aes(label = county_label),
+    size = 3.2,
+    box.padding = 0.3,
+    point.padding = 0.2,
+    max.overlaps = 20
+  ) +
+  coord_equal(xlim = plot_limits, ylim = plot_limits) +
+  labs(
+    x = "Predicted poor mental health (%)",
+    y = "Observed poor mental health (%)"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.title = element_text(face = "bold"),
+    panel.grid.minor = element_blank(),
+    legend.position = "none"
+  )
+```
+The highlighted counties fall mostly above the 45-degree line, indicating that their observed poor mental health is generally higher than what the regression model predicts based on structural disadvantage alone. This suggests that while factors like poverty, income, education, unemployment, insurance, and housing burden explain part of their high mental health burden, many of these counties—especially in West Virginia—still appear unusually unhealthy even relative to similar counties across the United States.
+
+## How Do the Most Unhealthy Counties Differ from U.S. Counties Overall?
+
+To compare the most unhealthy counties to the national county distribution, I calculate how far the top 15 counties differ from all U.S. counties on each predictor. I summarize these differences with a standardized mean difference plot, which makes it easy to see which structural disadvantages are most overrepresented in the counties with the highest poor mental health.
+
+```{r}
+#| label: fig-top15-vs-us-smd
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 10
+#| fig-height: 6
+#| fig-cap: "Standardized mean differences in predictors between the top 15 highest-burden counties and all U.S. counties."
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(forcats)
+
+comparison_df <- analysis_df %>%
+  select(
+    CountyFIPS,
+    CountyName,
+    StateAbbr,
+    poor_mental_health,
+    poverty_rate,
+    median_household_income,
+    unemployment_rate,
+    bachelors_or_higher,
+    uninsured_rate,
+    housing_cost_burden
+  ) %>%
+  na.omit()
+
+top_15_ids <- comparison_df %>%
+  arrange(desc(poor_mental_health)) %>%
+  slice_head(n = 15) %>%
+  pull(CountyFIPS)
+
+comparison_df <- comparison_df %>%
+  mutate(
+    group = if_else(CountyFIPS %in% top_15_ids, "Top 15 counties", "All U.S. counties")
+  )
+
+predictor_names <- c(
+  "poverty_rate",
+  "median_household_income",
+  "unemployment_rate",
+  "bachelors_or_higher",
+  "uninsured_rate",
+  "housing_cost_burden"
+)
+
+smd_df <- lapply(predictor_names, function(var) {
+  top_vals <- comparison_df %>%
+    filter(group == "Top 15 counties") %>%
+    pull(!!rlang::sym(var))
+
+  us_vals <- comparison_df %>%
+    filter(group == "All U.S. counties") %>%
+    pull(!!rlang::sym(var))
+
+  top_mean <- mean(top_vals, na.rm = TRUE)
+  us_mean <- mean(us_vals, na.rm = TRUE)
+  pooled_sd <- sd(c(top_vals, us_vals), na.rm = TRUE)
+
+  tibble(
+    predictor = var,
+    top_15_mean = top_mean,
+    us_mean = us_mean,
+    smd = (top_mean - us_mean) / pooled_sd
+  )
+}) %>%
+  bind_rows() %>%
+  mutate(
+    predictor = recode(
+      predictor,
+      poverty_rate = "Poverty rate",
+      median_household_income = "Median household income",
+      unemployment_rate = "Unemployment rate",
+      bachelors_or_higher = "Bachelor's degree or higher",
+      uninsured_rate = "Uninsured rate",
+      housing_cost_burden = "Housing cost burden"
+    ),
+    predictor = fct_reorder(predictor, smd)
+  )
+
+ggplot(smd_df, aes(x = smd, y = predictor)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray50") +
+  geom_segment(
+    aes(x = 0, xend = smd, y = predictor, yend = predictor),
+    color = "gray70",
+    linewidth = 0.8
+  ) +
+  geom_point(size = 3, color = "#2C3E50") +
+  labs(
+    x = "Standardized mean difference\n(Top 15 counties - All U.S. counties)",
+    y = NULL
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.title.x = element_text(face = "bold"),
+    axis.text.y = element_text(face = "bold"),
+    panel.grid.minor = element_blank()
+  )
+```
+The most unhealthy counties differ most sharply from U.S. counties overall on unemployment rate and poverty rate, both of which are much higher in the top 15 counties. They also have lower median household income and lower bachelor’s degree attainment, while differences in uninsured rate and housing cost burden are smaller, suggesting that economic hardship and education are the clearest factors distinguishing these counties from the national county profile.
+
+## Which Factors Are Most Strongly Associated with Poor Mental Health Across U.S. Counties?
+
+To directly answer the main research question, I fit a multiple linear regression model using all six county-level predictors and compare their standardized coefficients. Standardizing the variables places all predictors on the same scale, making it easier to identify which social and economic factors have the strongest associations with poor mental health across U.S. counties.
+
+```{r}
+#| label: fig-final-standardized-coefficients
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 10
+#| fig-height: 6
+#| fig-cap: "Standardized coefficients from a multiple linear regression model predicting poor mental health across U.S. counties."
+
+library(dplyr)
+library(ggplot2)
+library(broom)
+library(forcats)
+
+final_reg_df <- analysis_df %>%
+  select(
+    poor_mental_health,
+    poverty_rate,
+    median_household_income,
+    unemployment_rate,
+    bachelors_or_higher,
+    uninsured_rate,
+    housing_cost_burden
+  ) %>%
+  na.omit() %>%
+  mutate(across(everything(), ~ as.numeric(scale(.x))))
+
+final_model <- lm(
+  poor_mental_health ~ poverty_rate +
+    median_household_income +
+    unemployment_rate +
+    bachelors_or_higher +
+    uninsured_rate +
+    housing_cost_burden,
+  data = final_reg_df
+)
+
+final_coef_df <- tidy(final_model, conf.int = TRUE) %>%
+  filter(term != "(Intercept)") %>%
+  mutate(
+    term = recode(
+      term,
+      poverty_rate = "Poverty rate",
+      median_household_income = "Median household income",
+      unemployment_rate = "Unemployment rate",
+      bachelors_or_higher = "Bachelor's degree or higher",
+      uninsured_rate = "Uninsured rate",
+      housing_cost_burden = "Housing cost burden"
+    ),
+    term = fct_reorder(term, estimate)
+  )
+
+ggplot(final_coef_df, aes(x = estimate, y = term)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray50") +
+  geom_segment(
+    aes(x = 0, xend = estimate, y = term, yend = term),
+    color = "gray70",
+    linewidth = 0.8
+  ) +
+  geom_errorbarh(
+    aes(xmin = conf.low, xmax = conf.high),
+    height = 0.18,
+    color = "gray50"
+  ) +
+  geom_point(size = 3, color = "#2C3E50") +
+  labs(
+    x = "Standardized coefficient",
+    y = NULL
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.title.x = element_text(face = "bold"),
+    axis.text.y = element_text(face = "bold"),
+    panel.grid.minor = element_blank()
+  )
+```
+This final plot suggests that poverty rate has the strongest positive association with poor mental health across U.S. counties, while bachelor’s degree attainment has the strongest negative association. Unemployment rate and housing cost burden also show meaningful positive associations, while median household income is negatively associated; overall, the plot indicates that economic hardship and lower educational attainment are the factors most strongly linked to poor mental health in this county-level analysis.
 
 # Conclusion and Summary
+
+# TODO
+
+-   Focus on analysis for the counties with the most poor mental health, i.e. those in West Virginia, etc.
+-   In your Results section, make sure to develop a story instead of just saying "Here is Plot X, these are Results Y". Make your story flow more cohesively.
 
 # Works Cited
 
 Centers for Disease Control and Prevention. “About Mental Health.” *CDC*, 9 June 2025, www.cdc.gov/mental-health/about/index.html.
 
-Centers for Disease Control and Prevention. “Health Status | PLACES.” *CDC*, 29 Oct. 2024, www.cdc.gov/places/measure-definitions/health-status.html.
+Centers for Disease Control and Prevention. “Health Status \| PLACES.” *CDC*, 29 Oct. 2024, www.cdc.gov/places/measure-definitions/health-status.html.
 
 Office of Disease Prevention and Health Promotion. “Social Determinants of Health.” *Healthy People 2030*, U.S. Department of Health and Human Services, odphp.health.gov/healthypeople/priority-areas/social-determinants-health.
 
