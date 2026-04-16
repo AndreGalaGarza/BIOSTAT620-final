@@ -50,5 +50,6 @@ rsconnect/
 
 # Datasets
 places_county_2025.csv
+places_county_2025_old.csv
 .Renviron
 /.quarto/

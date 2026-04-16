@@ -1,6 +1,6 @@
 ---
 title: "What Drives Poor Mental Health Across U.S. Communities? About the Data"
-date: "4/15/2026"
+date: "4/16/2026"
 author: "Andre Gala-Garza"
 format: html
 editor: visual
@@ -28,7 +28,11 @@ I begin by loading and inspecting the PLACES data so I can confirm its structure
 The raw PLACES file contains many health measures, but only a subset is needed for this project. I keep the variables needed to identify counties, describe population size, and measure poor mental health.
 
 ```{r}
-places <- read.csv("places_county_2025.csv")
+places <- read.csv(
+  "https://data.cdc.gov/api/views/i46a-9kgh/rows.csv?accessType=DOWNLOAD",
+  stringsAsFactors = FALSE,
+  colClasses = c(CountyFIPS = "character")
+)
 ```
 
 ```{r}

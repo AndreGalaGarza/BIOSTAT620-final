@@ -1,6 +1,6 @@
 ---
 title: "What Drives Poor Mental Health Across U.S. Communities? A County-Level Analysis of Social and Economic Determinants in the United States"
-date: "4/15/2026"
+date: "4/16/2026"
 author: "Andre Gala-Garza"
 format: html
 editor: visual
@@ -46,7 +46,11 @@ library(tidyr)
 library(tidycensus)
 library(tigris)
 
-places <- read.csv("places_county_2025.csv")
+places <- read.csv(
+  "https://data.cdc.gov/api/views/i46a-9kgh/rows.csv?accessType=DOWNLOAD",
+  stringsAsFactors = FALSE,
+  colClasses = c(CountyFIPS = "character")
+)
 
 places_mh <- places %>%
   select(
